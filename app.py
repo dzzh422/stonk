@@ -1,52 +1,43 @@
 import streamlit as st
 import yfinance as yf
-import openai
-import os
+from openai import OpenAI
 
-# Get your OpenAI key (store as a Streamlit secret or manually input it)
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# Set OpenAI API key from secrets
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-st.title("📈 AI Stock Insights")
+# App title
+st.title("AI Stock Advisor")
 
-# Input: list of tickers
-tickers = st.text_input("Enter stock tickers (comma-separated):", "AAPL,MSFT,TSLA")
+# User input for stock symbol
+ticker_symbol = st.text_input("Enter stock symbol (e.g. AAPL, MSFT):")
 
-if tickers:
-    for symbol in [t.strip().upper() for t in tickers.split(',')]:
-        st.subheader(f"🔎 {symbol}")
-        try:
-            stock = yf.Ticker(symbol)
-            hist = stock.history(period="1mo")
-            info = stock.info
+# Fetch and display stock data
+if ticker_symbol:
+    try:
+        stock = yf.Ticker(ticker_symbol)
+        hist = stock.history(period="1mo")
 
-            st.line_chart(hist["Close"])
+        st.subheader(f"{ticker_symbol} - Last Month's Stock Price")
+        st.line_chart(hist["Close"])
 
-            # Show some key stats
-            st.write(f"**Current Price**: ${hist['Close'][-1]:.2f}")
-            st.write(f"**Market Cap**: {info.get('marketCap', 'N/A')}")
-            st.write(f"**P/E Ratio**: {info.get('trailingPE', 'N/A')}")
+        # Send stock info to OpenAI for insights
+        latest_close = hist["Close"][-1]
+        prompt = (
+            f"The stock {ticker_symbol} is currently trading at ${latest_close:.2f}. "
+            "Based on general market trends and recent performance, what should I consider before buying or selling this stock?"
+        )
 
-            # Prepare AI prompt
-            prompt = (
-                f"Stock ticker: {symbol}\n"
-                f"Current price: ${hist['Close'][-1]:.2f}\n"
-                f"P/E Ratio: {info.get('trailingPE', 'N/A')}\n"
-                f"Market Cap: {info.get('marketCap', 'N/A')}\n"
-                f"Based on this information, should I buy, sell, or hold {symbol}? Respond with one recommendation and a short explanation."
+        with st.spinner("Analyzing with GPT..."):
+            response = client.chat.completions.create(
+                model="gpt-4",  # or "gpt-3.5-turbo"
+                messages=[
+                    {"role": "system", "content": "You are a helpful financial assistant, but not a financial advisor."},
+                    {"role": "user", "content": prompt}
+                ]
             )
+            advice = response.choices[0].message.content
+            st.subheader("AI Insights")
+            st.write(advice)
 
-            with st.spinner(f"Analyzing {symbol}..."):
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=100,
-                )
-                ai_response = response.choices[0].message["content"]
-                st.success("AI Insight:")
-                st.markdown(ai_response)
-
-        except Exception as e:
-            st.error(f"Error loading {symbol}: {e}")
+    except Exception as e:
+        st.error(f"Error loading data for {ticker_symbol}: {e}")
