@@ -1,43 +1,47 @@
 import streamlit as st
 import yfinance as yf
-from openai import OpenAI
+import openai
 
-# Set OpenAI API key from secrets
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# Set your OpenAI API key from Streamlit secrets
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # App title
-st.title("AI Stock Advisor")
+st.title("📈 AI-Powered Stock Insights")
 
-# User input for stock symbol
-ticker_symbol = st.text_input("Enter stock symbol (e.g. AAPL, MSFT):")
+# User input for stock ticker
+ticker = st.text_input("Enter a stock ticker (e.g., AAPL, MSFT, GOOGL):")
 
-# Fetch and display stock data
-if ticker_symbol:
+# If ticker entered, fetch and display data
+if ticker:
     try:
-        stock = yf.Ticker(ticker_symbol)
+        # Get stock data
+        stock = yf.Ticker(ticker)
         hist = stock.history(period="1mo")
+        
+        if hist.empty:
+            st.warning("No historical data found for this ticker.")
+        else:
+            st.subheader(f"{ticker.upper()} - Last 1 Month Closing Prices")
+            st.line_chart(hist["Close"])
 
-        st.subheader(f"{ticker_symbol} - Last Month's Stock Price")
-        st.line_chart(hist["Close"])
+            # Ask OpenAI for insight
+            with st.spinner("Analyzing with AI..."):
+                prompt = (
+                    f"You're a financial analyst. Analyze recent trends in the stock price "
+                    f"of {ticker.upper()} over the past month based on general market behavior. "
+                    f"What might explain the movement, and what should an investor consider next?"
+                )
 
-        # Send stock info to OpenAI for insights
-        latest_close = hist["Close"][-1]
-        prompt = (
-            f"The stock {ticker_symbol} is currently trading at ${latest_close:.2f}. "
-            "Based on general market trends and recent performance, what should I consider before buying or selling this stock?"
-        )
+                response = openai.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful financial analyst."},
+                        {"role": "user", "content": prompt}
+                    ]
+                )
 
-        with st.spinner("Analyzing with GPT..."):
-            response = client.chat.completions.create(
-                model="gpt-4",  # or "gpt-3.5-turbo"
-                messages=[
-                    {"role": "system", "content": "You are a helpful financial assistant, but not a financial advisor."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            advice = response.choices[0].message.content
-            st.subheader("AI Insights")
-            st.write(advice)
+                st.subheader("🤖 AI Insight")
+                st.write(response.choices[0].message.content)
 
     except Exception as e:
-        st.error(f"Error loading data for {ticker_symbol}: {e}")
+        st.error(f"Error loading {ticker.upper()}: {e}")
